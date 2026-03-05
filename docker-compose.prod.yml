@@ -1,0 +1,32 @@
+services:
+  api:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  celery_worker:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+
+  chromadb:
+    restart: unless-stopped
+    ports: !reset []
+
+  redis:
+    restart: unless-stopped
