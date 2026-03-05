@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SampleTestSuite" tests="5" failures="1" errors="1" skipped="1" time="1.234">
+    <testcase name="test_addition" classname="math.tests" time="0.010"/>
+    <testcase name="test_subtraction" classname="math.tests" time="0.008"/>
+    <testcase name="test_multiplication_fails" classname="math.tests" time="0.012">
+        <failure message="AssertionError: Expected 6 but got 7">
+            math/tests.py:42 AssertionError: Expected 6 but got 7
+        </failure>
+    </testcase>
+    <testcase name="test_division_skipped" classname="math.tests" time="0.000">
+        <skipped message="Division tests disabled temporarily"/>
+    </testcase>
+    <testcase name="test_modulo_error" classname="math.tests" time="0.005">
+        <error message="RuntimeError: Unexpected exception">
+            math/tests.py:78 RuntimeError: Unexpected exception during setup
+        </error>
+    </testcase>
+</testsuite>
