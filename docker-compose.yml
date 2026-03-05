@@ -9,11 +9,14 @@ services:
       - CHROMA_PORT=8000
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
       chromadb:
         condition: service_started
+      redis:
+        condition: service_healthy
 
   postgres:
     image: postgres:15
@@ -37,5 +40,33 @@ services:
     volumes:
       - chroma_data:/chroma/chroma
 
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  celery_worker:
+    build: .
+    command: celery -A app.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/junit_ingest
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+
 volumes:
   chroma_data:
+  redis_data:

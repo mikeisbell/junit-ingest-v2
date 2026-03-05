@@ -1,5 +1,5 @@
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 # Must be set before any app imports so database.py picks up SQLite
 os.environ["DATABASE_URL"] = "sqlite:///./test_temp.db"
@@ -41,3 +41,11 @@ def bypass_auth():
     app.dependency_overrides[require_api_key] = lambda: fake_key
     yield
     app.dependency_overrides.pop(require_api_key, None)
+
+
+@pytest.fixture
+def mock_embed_task():
+    """Patch embed_failures_task.delay with a no-op MagicMock."""
+    mock = MagicMock()
+    with patch("app.main.embed_failures_task.delay", mock):
+        yield mock

@@ -16,6 +16,11 @@ def _bypass_auth_for_module(bypass_auth):
     """Automatically bypass API key auth for all tests in this module."""
 
 
+@pytest.fixture(autouse=True)
+def _bypass_embed_task(mock_embed_task):
+    """Automatically mock embed task dispatch for all tests in this module."""
+
+
 # ---------------------------------------------------------------------------
 # Parser unit tests
 # ---------------------------------------------------------------------------

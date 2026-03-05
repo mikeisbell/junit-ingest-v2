@@ -17,6 +17,11 @@ def _bypass_auth_for_module(bypass_auth):
     """Automatically bypass API key auth for all tests in this module."""
 
 
+@pytest.fixture(autouse=True)
+def _bypass_embed_task(mock_embed_task):
+    """Automatically mock embed task dispatch for all tests in this module."""
+
+
 # ---------------------------------------------------------------------------
 # Trace ID header tests
 # ---------------------------------------------------------------------------
@@ -36,9 +41,11 @@ def test_get_search_returns_trace_id_header(chroma_store):
 
 
 def test_post_analyze_returns_trace_id_header(chroma_store):
-    with patch("app.rag.analyze_failures", return_value="analysis text"):
+    mock_task = MagicMock()
+    mock_task.id = "trace-test-task"
+    with patch("app.main.analyze_failures_task.delay", return_value=mock_task):
         response = client.post("/analyze", json={"query": "error"})
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert "x-trace-id" in response.headers
 
 
@@ -57,19 +64,26 @@ def test_request_trace_id_echoed_in_response(chroma_store):
 def test_health_ok_when_all_dependencies_reachable(reset_store):
     mock_client = MagicMock()
     mock_client.heartbeat.return_value = {"nanosecond heartbeat": 1}
-    with patch("app.main._get_client", return_value=mock_client):
+    mock_redis_conn = MagicMock()
+    mock_redis_conn.ping.return_value = True
+    with patch("app.main._get_client", return_value=mock_client), \
+         patch("redis.from_url", return_value=mock_redis_conn):
         response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
     assert body["dependencies"]["postgres"]["status"] == "ok"
     assert body["dependencies"]["chromadb"]["status"] == "ok"
+    assert body["dependencies"]["redis"]["status"] == "ok"
 
 
 def test_health_degraded_when_chromadb_unreachable(reset_store):
     mock_client = MagicMock()
     mock_client.heartbeat.side_effect = Exception("Connection refused")
-    with patch("app.main._get_client", return_value=mock_client):
+    mock_redis_conn = MagicMock()
+    mock_redis_conn.ping.return_value = True
+    with patch("app.main._get_client", return_value=mock_client), \
+         patch("redis.from_url", return_value=mock_redis_conn):
         response = client.get("/health")
     assert response.status_code == 503
     body = response.json()

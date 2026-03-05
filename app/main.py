@@ -1,6 +1,8 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
+import redis
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -9,13 +11,16 @@ from sqlalchemy.orm import Session
 
 from . import database, db_models
 from .auth import generate_key, hash_key, require_admin_token, require_api_key
+from .celery_app import celery_app
 from .database import get_db
 from .logging_config import configure_logging
 from .middleware import TraceIDMiddleware
 from .models import TestCase, TestSuiteResult
 from .parser import JUnitParseError, parse_junit_xml
-from .rag import analyze_failures
-from .vector_store import _get_client, embed_failures, search_failures
+from .tasks import analyze_failures_task, embed_failures_task
+from .vector_store import _get_client, search_failures
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 configure_logging()
 
@@ -100,11 +105,8 @@ async def ingest_results(
         if tc.failure_message
     ]
     if failed_cases:
-        try:
-            embed_failures(suite_id=db_result.id, test_cases=failed_cases)
-            logger.info("embed_complete", extra={"suite_id": db_result.id})
-        except Exception as exc:  # noqa: BLE001
-            logger.error("embed_failed", extra={"error": str(exc)})
+        embed_failures_task.delay(suite_id=db_result.id, test_cases=failed_cases)
+        logger.info("embed_task_queued", extra={"suite_id": db_result.id})
 
     return _orm_to_pydantic(db_result)
 
@@ -181,30 +183,35 @@ async def create_api_key(
     }
 
 
-@app.post("/analyze")
+@app.post("/analyze", status_code=202)
 async def analyze_results(
     body: AnalyzeRequest,
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> dict:
-    """Retrieve similar failures and return a Claude-generated analysis."""
+    """Dispatch an async analysis job and return the task ID."""
     if not body.query or not body.query.strip():
         raise HTTPException(status_code=400, detail="query is required")
 
-    logger.info("analyze_started", extra={"query": body.query, "api_key_name": api_key.name})
-    failures = search_failures(query=body.query, n_results=body.n)
-
-    try:
-        analysis = analyze_failures(query=body.query, failures=failures)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("analyze_failed", extra={"error": str(exc)})
-        raise HTTPException(status_code=502, detail="Analysis service unavailable.") from exc
-
-    logger.info("analyze_complete", extra={"query": body.query, "failures_used": len(failures), "api_key_name": api_key.name})
+    task = analyze_failures_task.delay(query=body.query, n_results=body.n)
+    logger.info("analyze_task_queued", extra={"query": body.query, "api_key_name": api_key.name})
     return {
-        "query": body.query,
-        "failures_used": len(failures),
-        "analysis": analysis,
+        "task_id": task.id,
+        "status": "pending",
     }
+
+
+@app.get("/analyze/{task_id}")
+async def get_analyze_result(
+    task_id: str,
+    api_key: db_models.APIKeyORM = Depends(require_api_key),
+) -> dict:
+    """Poll for the result of an async analysis job."""
+    result = celery_app.AsyncResult(task_id)
+    if result.state in ("PENDING", "STARTED"):
+        return {"task_id": task_id, "status": "pending"}
+    if result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "complete", **result.result}
+    return {"task_id": task_id, "status": "failed", "error": str(result.result)}
 
 
 @app.get("/health")
@@ -225,6 +232,13 @@ async def health_check(db: Session = Depends(get_db)) -> JSONResponse:
         deps["chromadb"] = {"status": "ok"}
     except Exception as exc:  # noqa: BLE001
         deps["chromadb"] = {"status": "error", "detail": str(exc)}
+
+    # Redis check
+    try:
+        redis.from_url(REDIS_URL).ping()
+        deps["redis"] = {"status": "ok"}
+    except Exception as exc:  # noqa: BLE001
+        deps["redis"] = {"status": "error", "detail": str(exc)}
 
     all_ok = all(v["status"] == "ok" for v in deps.values())
     status_code = 200 if all_ok else 503

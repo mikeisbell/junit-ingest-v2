@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,8 +18,14 @@ def _bypass_auth_for_module(bypass_auth):
 
 def test_search_returns_results_after_ingest(reset_store, chroma_store):
     """Ingesting a file with failures then searching should return matching results."""
-    with open(SAMPLE_XML, "rb") as f:
-        response = client.post("/results", files={"file": ("sample.xml", f, "text/xml")})
+    from app.vector_store import embed_failures as _embed
+
+    def sync_embed(suite_id, test_cases):
+        _embed(suite_id=suite_id, test_cases=test_cases)
+
+    with patch("app.main.embed_failures_task.delay", side_effect=sync_embed):
+        with open(SAMPLE_XML, "rb") as f:
+            response = client.post("/results", files={"file": ("sample.xml", f, "text/xml")})
     assert response.status_code == 200
 
     search_response = client.get("/search", params={"q": "AssertionError"})

@@ -52,7 +52,7 @@ def test_post_results_invalid_token_returns_401(reset_store, chroma_store):
     assert response.status_code == 401
 
 
-def test_post_results_valid_token_succeeds(valid_api_key, chroma_store):
+def test_post_results_valid_token_succeeds(valid_api_key, chroma_store, mock_embed_task):
     with open(SAMPLE_XML, "rb") as f:
         response = client.post(
             "/results",
@@ -80,7 +80,10 @@ def test_get_search_no_auth_returns_403(chroma_store):
 def test_get_health_no_auth_returns_200(reset_store):
     mock_client = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
     mock_client.heartbeat.return_value = {}
-    with patch("app.main._get_client", return_value=mock_client):
+    mock_redis_conn = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
+    mock_redis_conn.ping.return_value = True
+    with patch("app.main._get_client", return_value=mock_client), \
+         patch("redis.from_url", return_value=mock_redis_conn):
         response = client.get("/health")
     assert response.status_code == 200
 
@@ -118,7 +121,7 @@ def test_post_keys_valid_admin_token_returns_201_with_key(reset_store):
     assert body["name"] == "dev"
 
 
-def test_key_from_post_keys_can_authenticate(reset_store, chroma_store):
+def test_key_from_post_keys_can_authenticate(reset_store, chroma_store, mock_embed_task):
     with patch.dict(os.environ, {"ADMIN_TOKEN": _ADMIN_TOKEN}):
         create_resp = client.post(
             "/keys",

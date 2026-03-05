@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,20 +24,16 @@ MOCK_FAILURES = [
 ]
 
 
-def test_analyze_returns_200(reset_store, chroma_store):
-    """POST /analyze with a valid query returns 200 with expected keys."""
-    with patch("app.main.search_failures", return_value=MOCK_FAILURES), \
-         patch("app.main.analyze_failures", return_value="Login tests fail due to auth issues."):
+def test_analyze_returns_200(chroma_store):
+    """POST /analyze with a valid query now returns 202 dispatching an async task."""
+    mock_task = MagicMock()
+    mock_task.id = "celery-task-abc"
+    with patch("app.main.analyze_failures_task.delay", return_value=mock_task):
         response = client.post("/analyze", json={"query": "why are login tests failing?"})
-
-    assert response.status_code == 200
+    assert response.status_code == 202
     body = response.json()
-    assert "query" in body
-    assert "failures_used" in body
-    assert "analysis" in body
-    assert body["query"] == "why are login tests failing?"
-    assert body["failures_used"] == 1
-    assert body["analysis"] == "Login tests fail due to auth issues."
+    assert body["task_id"] == "celery-task-abc"
+    assert body["status"] == "pending"
 
 
 def test_analyze_empty_query_returns_400(chroma_store):
@@ -51,22 +47,21 @@ def test_analyze_empty_query_returns_400(chroma_store):
 
 
 def test_analyze_service_error_returns_502(chroma_store):
-    """POST /analyze returns HTTP 502 when analyze_failures raises an exception."""
-    with patch("app.main.search_failures", return_value=MOCK_FAILURES), \
-         patch("app.main.analyze_failures", side_effect=Exception("API unavailable")):
+    """POST /analyze always returns 202; analysis errors surface in the task result, not HTTP."""
+    mock_task = MagicMock()
+    mock_task.id = "celery-task-def"
+    with patch("app.main.analyze_failures_task.delay", return_value=mock_task):
         response = client.post("/analyze", json={"query": "why are tests failing?"})
-
-    assert response.status_code == 502
-    assert "unavailable" in response.json()["detail"].lower()
+    assert response.status_code == 202
 
 
 def test_analyze_no_failures_returns_200(chroma_store):
-    """POST /analyze when no failures exist returns 200 with failures_used=0."""
-    with patch("app.main.search_failures", return_value=[]), \
-         patch("app.main.analyze_failures", return_value="No relevant failures found for this query."):
+    """POST /analyze returns 202 regardless of whether failures exist."""
+    mock_task = MagicMock()
+    mock_task.id = "celery-task-ghi"
+    with patch("app.main.analyze_failures_task.delay", return_value=mock_task):
         response = client.post("/analyze", json={"query": "any failures?"})
-
-    assert response.status_code == 200
+    assert response.status_code == 202
     body = response.json()
-    assert body["failures_used"] == 0
-    assert body["analysis"] == "No relevant failures found for this query."
+    assert body["task_id"] == "celery-task-ghi"
+    assert body["status"] == "pending"
