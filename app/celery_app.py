@@ -8,7 +8,7 @@ celery_app = Celery(
     "junit_ingest",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks", "app.agent_tasks"]
+    include=["app.tasks", "app.agent_tasks", "app.investigator_tasks"]
 )
 
 celery_app.conf.update(

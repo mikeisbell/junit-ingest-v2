@@ -18,6 +18,7 @@ from .middleware import TraceIDMiddleware
 from .models import TestCase, TestSuiteResult
 from .parser import JUnitParseError, parse_junit_xml
 from .agent_tasks import run_agent_task
+from .investigator_tasks import investigate_suite_task
 from .tasks import analyze_failures_task, embed_failures_task
 from .vector_store import _get_client, search_failures
 
@@ -224,6 +225,38 @@ async def get_agent_result(
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> dict:
     """Poll for the result of an async agent job."""
+    result = celery_app.AsyncResult(task_id)
+    if result.state in ("PENDING", "STARTED"):
+        return {"task_id": task_id, "status": "pending"}
+    if result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "complete", **result.result}
+    return {"task_id": task_id, "status": "failed", "error": str(result.result)}
+
+
+@app.post("/investigate/{suite_id}", status_code=202)
+async def investigate_suite_endpoint(
+    suite_id: int,
+    api_key: db_models.APIKeyORM = Depends(require_api_key),
+) -> dict:
+    """Dispatch an async investigation job for a suite and return the task ID."""
+    task = investigate_suite_task.delay(suite_id=suite_id)
+    logger.info(
+        "investigate_task_queued",
+        extra={"suite_id": suite_id, "api_key_name": api_key.name},
+    )
+    return {
+        "task_id": task.id,
+        "status": "pending",
+        "suite_id": suite_id,
+    }
+
+
+@app.get("/investigate/result/{task_id}")
+async def get_investigate_result(
+    task_id: str,
+    api_key: db_models.APIKeyORM = Depends(require_api_key),
+) -> dict:
+    """Poll for the result of an async investigation job."""
     result = celery_app.AsyncResult(task_id)
     if result.state in ("PENDING", "STARTED"):
         return {"task_id": task_id, "status": "pending"}
