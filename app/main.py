@@ -17,6 +17,7 @@ from .logging_config import configure_logging
 from .middleware import TraceIDMiddleware
 from .models import TestCase, TestSuiteResult
 from .parser import JUnitParseError, parse_junit_xml
+from .agent_tasks import run_agent_task
 from .tasks import analyze_failures_task, embed_failures_task
 from .vector_store import _get_client, search_failures
 
@@ -198,6 +199,37 @@ async def analyze_results(
         "task_id": task.id,
         "status": "pending",
     }
+
+
+@app.post("/agent", status_code=202)
+async def agent_query(
+    body: AnalyzeRequest,
+    api_key: db_models.APIKeyORM = Depends(require_api_key),
+) -> dict:
+    """Dispatch an async agent job and return the task ID."""
+    if not body.query or not body.query.strip():
+        raise HTTPException(status_code=400, detail="query is required")
+
+    task = run_agent_task.delay(query=body.query)
+    logger.info("agent_task_queued", extra={"query": body.query})
+    return {
+        "task_id": task.id,
+        "status": "pending",
+    }
+
+
+@app.get("/agent/{task_id}")
+async def get_agent_result(
+    task_id: str,
+    api_key: db_models.APIKeyORM = Depends(require_api_key),
+) -> dict:
+    """Poll for the result of an async agent job."""
+    result = celery_app.AsyncResult(task_id)
+    if result.state in ("PENDING", "STARTED"):
+        return {"task_id": task_id, "status": "pending"}
+    if result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "complete", **result.result}
+    return {"task_id": task_id, "status": "failed", "error": str(result.result)}
 
 
 @app.get("/analyze/{task_id}")
