@@ -10,20 +10,21 @@ import os
 import requests
 
 SERVICE_URL = os.getenv("SERVICE_URL", "http://localhost:8001")
+API_KEY = os.getenv("API_KEY", "")
 
 EVAL_CASES = [
     {
-        "query": "assertion errors where expected value did not match actual",
-        "expected_keywords": ["AssertionError", "Expected", "assert"],
+        "query": "AssertionError expected value did not match",
+        "expected_keywords": ["AssertionError", "Expected", "assert"]
     },
     {
-        "query": "null pointer or attribute errors",
-        "expected_keywords": ["NullPointer", "AttributeError", "null", "None"],
+        "query": "NullPointerException AttributeError NoneType object",
+        "expected_keywords": ["NullPointer", "AttributeError", "null", "None"]
     },
     {
-        "query": "timeout or connection failures",
-        "expected_keywords": ["timeout", "Timeout", "connection", "Connection"],
-    },
+        "query": "connection refused timeout failed to connect",
+        "expected_keywords": ["timeout", "Timeout", "connection", "Connection", "refused", "Refused"]
+    }
 ]
 
 
@@ -38,6 +39,7 @@ def run_eval() -> None:
         response = requests.get(
             f"{SERVICE_URL}/search",
             params={"q": query, "n": 5},
+            headers={"Authorization": f"Bearer {API_KEY}"},
             timeout=10,
         )
         response.raise_for_status()

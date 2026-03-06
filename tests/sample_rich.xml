@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RichSampleTestSuite" tests="12" failures="5" errors="3" skipped="1" time="4.567">
+
+  <!-- Passing tests -->
+  <testcase name="test_addition" classname="math.tests" time="0.1"/>
+  <testcase name="test_subtraction" classname="math.tests" time="0.1"/>
+  <testcase name="test_string_format" classname="string.tests" time="0.05"/>
+
+  <!-- Assertion errors -->
+  <testcase name="test_multiplication_fails" classname="math.tests" time="0.4">
+    <failure message="AssertionError: Expected 6 but got 7">
+      AssertionError: Expected 6 but got 7
+      at math.tests.test_multiplication_fails(test_math.py:42)
+    </failure>
+  </testcase>
+
+  <testcase name="test_user_age_validation" classname="user.tests" time="0.3">
+    <failure message="AssertionError: Expected status 200 but got 422">
+      AssertionError: Expected status 200 but got 422
+      assert response.status_code == 200
+      at user.tests.test_user_age_validation(test_user.py:88)
+    </failure>
+  </testcase>
+
+  <!-- Null pointer and attribute errors -->
+  <testcase name="test_user_profile_load" classname="user.tests" time="0.6">
+    <failure message="AttributeError: 'NoneType' object has no attribute 'email'">
+      AttributeError: 'NoneType' object has no attribute 'email'
+      user = get_user_by_id(999)
+      print(user.email)
+      at user.tests.test_user_profile_load(test_user.py:55)
+    </failure>
+  </testcase>
+
+  <testcase name="test_order_processing" classname="order.tests" time="0.5">
+    <error message="NullPointerException: Cannot invoke method getTotal() on null object">
+      NullPointerException: Cannot invoke method getTotal() on null object
+      Order order = orderService.findById(null);
+      order.getTotal();
+      at order.tests.test_order_processing(OrderTest.java:112)
+    </error>
+  </testcase>
+
+  <testcase name="test_cart_item_access" classname="cart.tests" time="0.4">
+    <error message="AttributeError: 'NoneType' object has no attribute 'quantity'">
+      AttributeError: 'NoneType' object has no attribute 'quantity'
+      item = cart.get_item(item_id=None)
+      total = item.quantity * item.price
+      at cart.tests.test_cart_item_access(test_cart.py:67)
+    </error>
+  </testcase>
+
+  <!-- Timeout and connection failures -->
+  <testcase name="test_payment_gateway_integration" classname="payment.tests" time="30.1">
+    <failure message="ConnectionError: Failed to establish connection to payment-gateway.internal:8443">
+      ConnectionError: Failed to establish connection to payment-gateway.internal:8443
+      requests.exceptions.ConnectionError: HTTPSConnectionPool(host='payment-gateway.internal', port=8443)
+      Max retries exceeded with url: /v1/charge
+      at payment.tests.test_payment_gateway_integration(test_payment.py:201)
+    </failure>
+  </testcase>
+
+  <testcase name="test_external_api_fetch" classname="api.tests" time="30.0">
+    <error message="TimeoutError: Request to https://api.external-service.com timed out after 30s">
+      TimeoutError: Request to https://api.external-service.com timed out after 30s
+      requests.exceptions.Timeout: HTTPSConnectionPool(host='api.external-service.com', port=443)
+      Read timed out. (read timeout=30)
+      at api.tests.test_external_api_fetch(test_api.py:144)
+    </error>
+  </testcase>
+
+  <testcase name="test_database_connection_pool" classname="db.tests" time="15.2">
+    <failure message="OperationalError: connection to server at localhost failed: Connection refused">
+      OperationalError: connection to server at localhost failed: Connection refused
+      psycopg2.OperationalError: could not connect to server: Connection refused
+      Is the server running on host 'localhost' and accepting TCP/IP connections on port 5432?
+      at db.tests.test_database_connection_pool(test_db.py:33)
+    </failure>
+  </testcase>
+
+  <!-- Skipped test -->
+  <testcase name="test_legacy_payment_flow" classname="payment.tests" time="0.0">
+    <skipped message="Legacy payment flow deprecated, skipping until migration complete"/>
+  </testcase>
+
+</testsuite>

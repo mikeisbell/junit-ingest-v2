@@ -1,4 +1,8 @@
+import logging
+
 import anthropic
+
+logger = logging.getLogger(__name__)
 
 MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 512
@@ -29,5 +33,18 @@ def analyze_failures(query: str, failures: list[dict]) -> str:
         model=MODEL,
         max_tokens=MAX_TOKENS,
         messages=[{"role": "user", "content": prompt}],
+    )
+    input_tokens = message.usage.input_tokens
+    output_tokens = message.usage.output_tokens
+    estimated_cost = round((input_tokens / 1_000_000) * 3.00 + (output_tokens / 1_000_000) * 15.00, 6)
+    logger.info(
+        "claude_api_call",
+        extra={
+            "model": MODEL,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "estimated_cost_usd": estimated_cost,
+            "caller": "analyze_failures",
+        },
     )
     return message.content[0].text

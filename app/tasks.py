@@ -1,5 +1,6 @@
 import logging
 
+from .cache import get_cached, make_analyze_cache_key, set_cached
 from .celery_app import celery_app
 from .logging_config import configure_logging
 from .rag import analyze_failures
@@ -24,10 +25,18 @@ def embed_failures_task(self, suite_id: int, test_cases: list) -> dict:
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=10)
 def analyze_failures_task(self, query: str, n_results: int) -> dict:
     try:
+        key = make_analyze_cache_key(query, n_results)
+        cached = get_cached(key)
+        if cached:
+            logger.info("cache_hit", extra={"endpoint": "analyze", "query": query})
+            return cached
+        logger.info("cache_miss", extra={"endpoint": "analyze"})
         results = search_failures(query=query, n_results=n_results)
         analysis = analyze_failures(query=query, failures=results)
         logger.info("analyze_task_complete", extra={"query": query, "failures_used": len(results)})
-        return {"query": query, "failures_used": len(results), "analysis": analysis}
+        result = {"query": query, "failures_used": len(results), "analysis": analysis}
+        set_cached(key, result)
+        return result
     except Exception as exc:
         logger.error("analyze_task_failed", extra={"query": query, "error": str(exc)})
         raise self.retry(exc=exc)

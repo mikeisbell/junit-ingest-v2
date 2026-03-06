@@ -22,10 +22,12 @@ Be concise and specific in your analysis."""
 def run_agent(query: str, db: Session) -> dict:
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-    messages = [{"role": "user", "content": query}]
+    messages = [{'role': 'user', 'content': query}]
     tools_called: list[str] = []
     final_answer = "Agent did not produce a final answer."
     iterations = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
 
     response = client.messages.create(
         model="claude-sonnet-4-6",
@@ -34,6 +36,8 @@ def run_agent(query: str, db: Session) -> dict:
         tools=TOOL_DEFINITIONS,
         messages=messages,
     )
+    total_input_tokens += response.usage.input_tokens
+    total_output_tokens += response.usage.output_tokens
 
     for _ in range(10):
         iterations += 1
@@ -75,6 +79,8 @@ def run_agent(query: str, db: Session) -> dict:
                 tools=TOOL_DEFINITIONS,
                 messages=messages,
             )
+            total_input_tokens += response.usage.input_tokens
+            total_output_tokens += response.usage.output_tokens
         else:
             # Unexpected stop reason; try to extract any text
             for block in response.content:
@@ -86,6 +92,19 @@ def run_agent(query: str, db: Session) -> dict:
         for block in response.content:
             if hasattr(block, "text"):
                 final_answer = block.text
+
+    estimated_cost = round((total_input_tokens / 1_000_000) * 3.00 + (total_output_tokens / 1_000_000) * 15.00, 6)
+    logger.info(
+        "claude_api_call",
+        extra={
+            "model": "claude-sonnet-4-6",
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "estimated_cost_usd": estimated_cost,
+            "caller": "run_agent",
+            "iterations": iterations,
+        },
+    )
 
     return {
         "query": query,

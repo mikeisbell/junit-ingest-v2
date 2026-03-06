@@ -112,6 +112,20 @@ Respond with valid JSON only. No markdown, no preamble."""
             raw_text = block.text
             break
 
+    input_tokens = response.usage.input_tokens
+    output_tokens = response.usage.output_tokens
+    estimated_cost = round((input_tokens / 1_000_000) * 3.00 + (output_tokens / 1_000_000) * 15.00, 6)
+    logger.info(
+        "claude_api_call",
+        extra={
+            "model": "claude-sonnet-4-6",
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "estimated_cost_usd": estimated_cost,
+            "caller": "investigate_suite",
+        },
+    )
+
     try:
         report = json.loads(raw_text)
     except (json.JSONDecodeError, ValueError) as exc:

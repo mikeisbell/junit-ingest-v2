@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 import redis
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -18,7 +19,9 @@ from .middleware import TraceIDMiddleware
 from .models import TestCase, TestSuiteResult
 from .parser import JUnitParseError, parse_junit_xml
 from .agent_tasks import run_agent_task
+from .cache import get_cached, make_search_cache_key, set_cached
 from .investigator_tasks import investigate_suite_task
+from .rate_limiter import check_rate_limit
 from .tasks import analyze_failures_task, embed_failures_task
 from .vector_store import _get_client, search_failures
 
@@ -61,6 +64,9 @@ async def ingest_results(
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> TestSuiteResult:
     """Accept a JUnit XML file upload, parse it, and return structured results."""
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     content = await file.read()
     logger.info("ingest_started", extra={"upload_filename": file.filename, "content_length": len(content), "api_key_name": api_key.name})
     try:
@@ -110,7 +116,10 @@ async def ingest_results(
         embed_failures_task.delay(suite_id=db_result.id, test_cases=failed_cases)
         logger.info("embed_task_queued", extra={"suite_id": db_result.id})
 
-    return _orm_to_pydantic(db_result)
+    return JSONResponse(
+        content=jsonable_encoder(_orm_to_pydantic(db_result)),
+        headers={"X-RateLimit-Remaining": str(remaining)},
+    )
 
 
 @app.get("/results", response_model=list[TestSuiteResult])
@@ -119,8 +128,14 @@ async def get_results(
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> list[TestSuiteResult]:
     """Return all previously ingested test suite results."""
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     rows = db.query(db_models.TestSuiteResultORM).all()
-    return [_orm_to_pydantic(row) for row in rows]
+    return JSONResponse(
+        content=jsonable_encoder([_orm_to_pydantic(row) for row in rows]),
+        headers={"X-RateLimit-Remaining": str(remaining)},
+    )
 
 
 @app.get("/results/{result_id}", response_model=TestSuiteResult)
@@ -130,6 +145,9 @@ async def get_result(
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> TestSuiteResult:
     """Return a single previously ingested test suite result by its database ID."""
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     row = (
         db.query(db_models.TestSuiteResultORM)
         .filter(db_models.TestSuiteResultORM.id == result_id)
@@ -137,7 +155,10 @@ async def get_result(
     )
     if row is None:
         raise HTTPException(status_code=404, detail=f"No result with id {result_id}")
-    return _orm_to_pydantic(row)
+    return JSONResponse(
+        content=jsonable_encoder(_orm_to_pydantic(row)),
+        headers={"X-RateLimit-Remaining": str(remaining)},
+    )
 
 
 @app.get("/search")
@@ -149,10 +170,21 @@ async def search_results(
     """Search for similar failure messages using semantic similarity."""
     if not q or not q.strip():
         raise HTTPException(status_code=400, detail="Query parameter q is required.")
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
+    key = make_search_cache_key(q, n)
+    cached = get_cached(key)
+    if cached:
+        logger.info("cache_hit", extra={"endpoint": "search", "query": q})
+        return JSONResponse(content=cached, headers={"X-RateLimit-Remaining": str(remaining)})
+    logger.info("cache_miss", extra={"endpoint": "search"})
     logger.info("search_started", extra={"query": q, "api_key_name": api_key.name})
     results = search_failures(query=q, n_results=n)
     logger.info("search_complete", extra={"query": q, "result_count": len(results), "api_key_name": api_key.name})
-    return {"query": q, "results": results}
+    response_dict = {"query": q, "results": results}
+    set_cached(key, response_dict)
+    return JSONResponse(content=response_dict, headers={"X-RateLimit-Remaining": str(remaining)})
 
 
 class AnalyzeRequest(BaseModel):
@@ -171,6 +203,9 @@ async def create_api_key(
     _: None = Depends(require_admin_token),
 ) -> dict:
     """Issue a new API key. Requires X-Admin-Token header."""
+    allowed, remaining = check_rate_limit("admin")
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     plaintext = generate_key()
     new_record = db_models.APIKeyORM(name=body.name, key_hash=hash_key(plaintext))
     db.add(new_record)
@@ -178,11 +213,15 @@ async def create_api_key(
     db.refresh(new_record)
     logger.info("api_key_created", extra={"api_key_name": body.name})
     # This is the only time the plaintext key is returned. It is not stored.
-    return {
-        "key": plaintext,
-        "name": new_record.name,
-        "created_at": new_record.created_at.isoformat(),
-    }
+    return JSONResponse(
+        content={
+            "key": plaintext,
+            "name": new_record.name,
+            "created_at": new_record.created_at.isoformat(),
+        },
+        status_code=201,
+        headers={"X-RateLimit-Remaining": str(remaining)},
+    )
 
 
 @app.post("/analyze", status_code=202)
@@ -193,13 +232,16 @@ async def analyze_results(
     """Dispatch an async analysis job and return the task ID."""
     if not body.query or not body.query.strip():
         raise HTTPException(status_code=400, detail="query is required")
-
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     task = analyze_failures_task.delay(query=body.query, n_results=body.n)
     logger.info("analyze_task_queued", extra={"query": body.query, "api_key_name": api_key.name})
-    return {
-        "task_id": task.id,
-        "status": "pending",
-    }
+    return JSONResponse(
+        content={"task_id": task.id, "status": "pending"},
+        status_code=202,
+        headers={"X-RateLimit-Remaining": str(remaining)},
+    )
 
 
 @app.post("/agent", status_code=202)
@@ -210,13 +252,16 @@ async def agent_query(
     """Dispatch an async agent job and return the task ID."""
     if not body.query or not body.query.strip():
         raise HTTPException(status_code=400, detail="query is required")
-
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     task = run_agent_task.delay(query=body.query)
     logger.info("agent_task_queued", extra={"query": body.query})
-    return {
-        "task_id": task.id,
-        "status": "pending",
-    }
+    return JSONResponse(
+        content={"task_id": task.id, "status": "pending"},
+        status_code=202,
+        headers={"X-RateLimit-Remaining": str(remaining)},
+    )
 
 
 @app.get("/agent/{task_id}")
@@ -225,12 +270,15 @@ async def get_agent_result(
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> dict:
     """Poll for the result of an async agent job."""
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     result = celery_app.AsyncResult(task_id)
     if result.state in ("PENDING", "STARTED"):
-        return {"task_id": task_id, "status": "pending"}
+        return JSONResponse(content={"task_id": task_id, "status": "pending"}, headers={"X-RateLimit-Remaining": str(remaining)})
     if result.state == "SUCCESS":
-        return {"task_id": task_id, "status": "complete", **result.result}
-    return {"task_id": task_id, "status": "failed", "error": str(result.result)}
+        return JSONResponse(content={"task_id": task_id, "status": "complete", **result.result}, headers={"X-RateLimit-Remaining": str(remaining)})
+    return JSONResponse(content={"task_id": task_id, "status": "failed", "error": str(result.result)}, headers={"X-RateLimit-Remaining": str(remaining)})
 
 
 @app.post("/investigate/{suite_id}", status_code=202)
@@ -239,16 +287,19 @@ async def investigate_suite_endpoint(
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> dict:
     """Dispatch an async investigation job for a suite and return the task ID."""
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     task = investigate_suite_task.delay(suite_id=suite_id)
     logger.info(
         "investigate_task_queued",
         extra={"suite_id": suite_id, "api_key_name": api_key.name},
     )
-    return {
-        "task_id": task.id,
-        "status": "pending",
-        "suite_id": suite_id,
-    }
+    return JSONResponse(
+        content={"task_id": task.id, "status": "pending", "suite_id": suite_id},
+        status_code=202,
+        headers={"X-RateLimit-Remaining": str(remaining)},
+    )
 
 
 @app.get("/investigate/result/{task_id}")
@@ -257,12 +308,15 @@ async def get_investigate_result(
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> dict:
     """Poll for the result of an async investigation job."""
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     result = celery_app.AsyncResult(task_id)
     if result.state in ("PENDING", "STARTED"):
-        return {"task_id": task_id, "status": "pending"}
+        return JSONResponse(content={"task_id": task_id, "status": "pending"}, headers={"X-RateLimit-Remaining": str(remaining)})
     if result.state == "SUCCESS":
-        return {"task_id": task_id, "status": "complete", **result.result}
-    return {"task_id": task_id, "status": "failed", "error": str(result.result)}
+        return JSONResponse(content={"task_id": task_id, "status": "complete", **result.result}, headers={"X-RateLimit-Remaining": str(remaining)})
+    return JSONResponse(content={"task_id": task_id, "status": "failed", "error": str(result.result)}, headers={"X-RateLimit-Remaining": str(remaining)})
 
 
 @app.get("/analyze/{task_id}")
@@ -271,12 +325,15 @@ async def get_analyze_result(
     api_key: db_models.APIKeyORM = Depends(require_api_key),
 ) -> dict:
     """Poll for the result of an async analysis job."""
+    allowed, remaining = check_rate_limit(api_key.name)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 30 requests per minute per API key.")
     result = celery_app.AsyncResult(task_id)
     if result.state in ("PENDING", "STARTED"):
-        return {"task_id": task_id, "status": "pending"}
+        return JSONResponse(content={"task_id": task_id, "status": "pending"}, headers={"X-RateLimit-Remaining": str(remaining)})
     if result.state == "SUCCESS":
-        return {"task_id": task_id, "status": "complete", **result.result}
-    return {"task_id": task_id, "status": "failed", "error": str(result.result)}
+        return JSONResponse(content={"task_id": task_id, "status": "complete", **result.result}, headers={"X-RateLimit-Remaining": str(remaining)})
+    return JSONResponse(content={"task_id": task_id, "status": "failed", "error": str(result.result)}, headers={"X-RateLimit-Remaining": str(remaining)})
 
 
 @app.get("/health")
