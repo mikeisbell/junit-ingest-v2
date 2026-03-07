@@ -8,3 +8,4 @@ psycopg2-binary>=2.9.0
 chromadb==1.5.2
 anthropic
 celery[redis]
+pytest-cov
