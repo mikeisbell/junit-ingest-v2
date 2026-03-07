@@ -20,6 +20,7 @@ from .models import TestCase, TestSuiteResult
 from .parser import JUnitParseError, parse_junit_xml
 from .agent_tasks import run_agent_task
 from .cache import get_cached, make_search_cache_key, set_cached
+from .ci_webhook import process_ci_webhook
 from .investigator_tasks import investigate_suite_task
 from .rate_limiter import check_rate_limit
 from .tasks import analyze_failures_task, embed_failures_task
@@ -370,4 +371,40 @@ async def health_check(db: Session = Depends(get_db)) -> JSONResponse:
             "status": "ok" if all_ok else "degraded",
             "dependencies": deps,
         },
+    )
+
+
+# This endpoint is intentionally unauthenticated for CI pipeline use.
+@app.post("/webhook/ci")
+async def ci_webhook(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Accept a JUnit XML file from a CI pipeline and conditionally create a DevRev issue."""
+    content = await file.read()
+    try:
+        suite = parse_junit_xml(content)
+    except JUnitParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    failure_rate = round(suite.total_failures / suite.total_tests, 4) if suite.total_tests > 0 else 0.0
+
+    devrev_result = None
+    issue_created = False
+    try:
+        devrev_result = process_ci_webhook(suite, db)
+        if devrev_result is not None:
+            issue_created = True
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return JSONResponse(
+        content={
+            "suite": suite.name,
+            "tests": suite.total_tests,
+            "failures": suite.total_failures,
+            "failure_rate": failure_rate,
+            "issue_created": issue_created,
+            "devrev_result": devrev_result,
+        }
     )

@@ -10,6 +10,11 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ADMIN_TOKEN=${ADMIN_TOKEN}
       - REDIS_URL=redis://redis:6379/0
+      - DEVREV_PAT=${DEVREV_PAT:-}
+      - DEVREV_PART_ID=${DEVREV_PART_ID:-PROD-1}
+      - DEVREV_OWNER_ID=${DEVREV_OWNER_ID:-}
+      - DEVREV_MOCK=${DEVREV_MOCK:-true}
+      - CI_FAILURE_THRESHOLD=${CI_FAILURE_THRESHOLD:-0.2}
     depends_on:
       postgres:
         condition: service_healthy
