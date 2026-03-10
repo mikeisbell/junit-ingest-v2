@@ -30,13 +30,7 @@ from .graph import get_gap_analysis, get_tests_for_modules, ingest_suite_to_grap
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
-DEMO_SEED_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "demo", "data", "seed_data.json"
-)
-
-DEMO_FEATURE_MAP_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "demo", "data", "feature_map.json"
-)
+FEATURE_MAP_PATH = os.getenv("FEATURE_MAP_PATH", "")
 
 configure_logging()
 
@@ -46,17 +40,13 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     database.Base.metadata.create_all(bind=database.engine)
-    from .graph import get_driver, init_graph, seed_graph
+    from .graph import get_driver, init_graph
     driver = get_driver()
     if driver is not None:
         init_graph(driver)
-        if os.path.exists(DEMO_SEED_PATH):
-            with open(DEMO_SEED_PATH) as f:
-                seed_data = json.load(f)
-            seed_graph(driver, seed_data)
     app.state.neo4j_driver = driver
-    if os.path.exists(DEMO_FEATURE_MAP_PATH):
-        with open(DEMO_FEATURE_MAP_PATH) as f:
+    if FEATURE_MAP_PATH and os.path.exists(FEATURE_MAP_PATH):
+        with open(FEATURE_MAP_PATH) as f:
             app.state.feature_map = json.load(f)
     else:
         app.state.feature_map = {}
