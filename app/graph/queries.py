@@ -84,7 +84,7 @@ def get_gap_analysis(driver, bug_id: str) -> dict:
         bug_id: The Bug.id value to look up (e.g. "BUG-001").
 
     Returns:
-        Dict with keys: bug, affected_feature, covering_tests, gap_assessment.
+        Dict with keys: bug, affected_features, covering_tests, gap_assessment.
         On failure returns {"error": "..."}.
     """
     if driver is None:
@@ -109,15 +109,20 @@ def get_gap_analysis(driver, bug_id: str) -> dict:
             "escaped": bug_record["escaped"],
         }
 
-        # Collect the affected feature and all covering tests in one query to
-        # avoid N+1 round-trips when a feature has many covering tests.
+        # Aggregate all features and their covering tests in one query so the
+        # result is always a single row regardless of how many features a bug
+        # affects. Calling .single() on a multi-row result would silently discard
+        # coverage data for the extra features.
         coverage_result = session.run(
             """
             MATCH (b:Bug {id: $bug_id})-[:AFFECTS]->(f:Feature)
             OPTIONAL MATCH (t:TestCase)-[:COVERS]->(f)
-            RETURN f.name AS feature_name,
-                   f.description AS feature_description,
-                   collect({name: t.name, suite_name: t.suite_name, status: t.status}) AS tests
+            WITH f, collect({name: t.name, suite_name: t.suite_name, status: t.status}) AS tests
+            RETURN collect({
+                feature_name: f.name,
+                feature_description: f.description,
+                tests: tests
+            }) AS features
             """,
             bug_id=bug_id,
         )
@@ -125,10 +130,18 @@ def get_gap_analysis(driver, bug_id: str) -> dict:
         if coverage_record is None:
             return {"error": "bug not found"}
 
-        # Filter out null entries that appear when OPTIONAL MATCH finds no test cases.
-        covering_tests = [
-            t for t in coverage_record["tests"]
-            if t.get("name") is not None
+        # Flatten all tests across all affected features, filtering out null
+        # entries that appear when OPTIONAL MATCH finds no test cases for a feature.
+        covering_tests = []
+        for feat in coverage_record["features"]:
+            for t in feat["tests"]:
+                if t.get("name") is not None:
+                    covering_tests.append(t)
+
+        # Build the affected_features list (one entry per feature this bug affects).
+        affected_features = [
+            {"name": feat["feature_name"], "description": feat["feature_description"]}
+            for feat in coverage_record["features"]
         ]
 
         # Determine coverage posture to give operators a quick escape-risk signal.
@@ -141,10 +154,7 @@ def get_gap_analysis(driver, bug_id: str) -> dict:
 
         return {
             "bug": bug,
-            "affected_feature": {
-                "name": coverage_record["feature_name"],
-                "description": coverage_record["feature_description"],
-            },
+            "affected_features": affected_features,
             "covering_tests": covering_tests,
             "gap_assessment": gap_assessment,
         }

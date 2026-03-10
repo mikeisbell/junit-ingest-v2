@@ -11,9 +11,15 @@ Environment variables required:
     API_KEY        Bearer token issued via POST /keys
     SERVICE_URL    (default: http://localhost:8001)
 """
+import json
 import os
 import sys
 import urllib.request
+from pathlib import Path
+
+from app.graph.driver import get_driver
+from app.graph.ingest import ingest_suite_to_graph
+from app.parser import parse_junit_xml
 
 SERVICE_URL = os.getenv("SERVICE_URL", "http://localhost:8001")
 API_KEY = os.getenv("API_KEY", "")
@@ -27,6 +33,18 @@ def main():
 
     with open(DEMO_XML_PATH, "rb") as f:
         xml_content = f.read()
+
+    suite_result = parse_junit_xml(xml_content)
+
+    driver = get_driver()
+    if driver:
+        feature_map_path = Path(__file__).parent / "data" / "feature_map.json"
+        with open(feature_map_path) as f:
+            feature_map = json.load(f)
+        ingest_suite_to_graph(driver, suite_result, feature_map)
+        driver.close()
+    else:
+        print("Neo4j unavailable, skipping graph ingest")
 
     boundary = "----DemoIngestBoundary"
     body = (

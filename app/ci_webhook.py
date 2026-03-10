@@ -90,6 +90,7 @@ def process_ci_webhook(suite: TestSuiteResult, db: Session, driver=None) -> dict
         db.add(db_suite)
         db.commit()
         db.refresh(db_suite)
+        _ = db_suite.test_cases  # eagerly load relationship within this session
 
         # investigate_suite is called synchronously here—not via a Celery task—
         # because the webhook handler must assemble the DevRev issue body from the
