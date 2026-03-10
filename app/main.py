@@ -1,9 +1,10 @@
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
 
 import redis
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -25,8 +26,17 @@ from .investigator_tasks import investigate_suite_task
 from .rate_limiter import check_rate_limit
 from .tasks import analyze_failures_task, embed_failures_task
 from .vector_store import _get_client, search_failures
+from .graph import get_gap_analysis, get_tests_for_modules, ingest_suite_to_graph
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+
+DEMO_SEED_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "demo", "data", "seed_data.json"
+)
+
+DEMO_FEATURE_MAP_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "demo", "data", "feature_map.json"
+)
 
 configure_logging()
 
@@ -36,7 +46,23 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     database.Base.metadata.create_all(bind=database.engine)
+    from .graph import get_driver, init_graph, seed_graph
+    driver = get_driver()
+    if driver is not None:
+        init_graph(driver)
+        if os.path.exists(DEMO_SEED_PATH):
+            with open(DEMO_SEED_PATH) as f:
+                seed_data = json.load(f)
+            seed_graph(driver, seed_data)
+    app.state.neo4j_driver = driver
+    if os.path.exists(DEMO_FEATURE_MAP_PATH):
+        with open(DEMO_FEATURE_MAP_PATH) as f:
+            app.state.feature_map = json.load(f)
+    else:
+        app.state.feature_map = {}
     yield
+    if driver is not None:
+        driver.close()
 
 
 app = FastAPI(title="JUnit XML Ingestion Service", lifespan=lifespan)
@@ -60,6 +86,7 @@ def _orm_to_pydantic(row: db_models.TestSuiteResultORM) -> TestSuiteResult:
 
 @app.post("/results", response_model=TestSuiteResult)
 async def ingest_results(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     api_key: db_models.APIKeyORM = Depends(require_api_key),
@@ -103,6 +130,15 @@ async def ingest_results(
             "total_failures": db_result.total_failures,
         },
     )
+
+    try:
+        ingest_suite_to_graph(
+            getattr(request.app.state, "neo4j_driver", None),
+            result,
+            request.app.state.feature_map,
+        )
+    except Exception as exc:
+        logger.warning("neo4j_ingest_warning", extra={"error": str(exc)})
 
     failed_cases = [
         {
@@ -195,6 +231,12 @@ class AnalyzeRequest(BaseModel):
 
 class CreateKeyRequest(BaseModel):
     name: str = Field(..., min_length=1)
+
+
+class ChurnRequest(BaseModel):
+    """Request body for POST /graph/churn."""
+
+    modules: list[str]
 
 
 @app.post("/keys", status_code=201)
@@ -338,7 +380,7 @@ async def get_analyze_result(
 
 
 @app.get("/health")
-async def health_check(db: Session = Depends(get_db)) -> JSONResponse:
+async def health_check(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
     """Check the status of all dependencies and return their health."""
     deps: dict = {}
 
@@ -363,6 +405,17 @@ async def health_check(db: Session = Depends(get_db)) -> JSONResponse:
     except Exception as exc:  # noqa: BLE001
         deps["redis"] = {"status": "error", "detail": str(exc)}
 
+    # Neo4j check
+    try:
+        neo4j_driver = getattr(request.app.state, "neo4j_driver", None)
+        if neo4j_driver is None:
+            raise RuntimeError("driver not initialized")
+        with neo4j_driver.session() as session:
+            session.run("RETURN 1")
+        deps["neo4j"] = {"status": "ok"}
+    except Exception as exc:  # noqa: BLE001
+        deps["neo4j"] = {"status": "error", "detail": str(exc)}
+
     all_ok = all(v["status"] == "ok" for v in deps.values())
     status_code = 200 if all_ok else 503
     return JSONResponse(
@@ -377,6 +430,7 @@ async def health_check(db: Session = Depends(get_db)) -> JSONResponse:
 # This endpoint is intentionally unauthenticated for CI pipeline use.
 @app.post("/webhook/ci")
 async def ci_webhook(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -392,7 +446,9 @@ async def ci_webhook(
     devrev_result = None
     issue_created = False
     try:
-        devrev_result = process_ci_webhook(suite, db)
+        devrev_result = process_ci_webhook(
+            suite, db, driver=getattr(request.app.state, "neo4j_driver", None)
+        )
         if devrev_result is not None:
             issue_created = True
     except Exception as exc:
@@ -408,3 +464,47 @@ async def ci_webhook(
             "devrev_result": devrev_result,
         }
     )
+
+
+@app.post("/graph/churn")
+async def graph_churn(
+    request: Request,
+    body: ChurnRequest,
+    api_key: db_models.APIKeyORM = Depends(require_api_key),
+) -> dict:
+    """Return prioritized test cases for the given list of changed code modules.
+
+    Traverses the knowledge graph from CodeModule -> Feature -> TestCase.
+    Returns 503 if Neo4j is unavailable.
+    """
+    driver = getattr(request.app.state, "neo4j_driver", None)
+    if driver is None:
+        raise HTTPException(status_code=503, detail="graph unavailable")
+    tests = get_tests_for_modules(driver, body.modules)
+    return {
+        "changed_modules": body.modules,
+        "recommended_tests": tests,
+        "total_recommended": len(tests),
+    }
+
+
+@app.get("/graph/gaps/{bug_id}")
+async def graph_gaps(
+    bug_id: str,
+    request: Request,
+    api_key: db_models.APIKeyORM = Depends(require_api_key),
+) -> dict:
+    """Return feature coverage analysis for the given bug ID.
+
+    Traverses the knowledge graph from Bug -> Feature <- TestCase.
+    Returns 404 if the bug is not found, 503 if Neo4j is unavailable.
+    """
+    driver = getattr(request.app.state, "neo4j_driver", None)
+    if driver is None:
+        raise HTTPException(status_code=503, detail="graph unavailable")
+    result = get_gap_analysis(driver, bug_id)
+    if result.get("error") == "bug not found":
+        raise HTTPException(status_code=404, detail="bug not found")
+    if result.get("error") == "graph unavailable":
+        raise HTTPException(status_code=503, detail="graph unavailable")
+    return result

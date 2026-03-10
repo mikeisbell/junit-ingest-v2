@@ -24,12 +24,12 @@ def auth_headers(api_key):
 
 @pytest.fixture(scope="session")
 def ingested_suite(service_url, auth_headers):
-    xml_path = os.path.join(os.path.dirname(__file__), "..", "sample_rich.xml")
+    xml_path = os.path.join(os.path.dirname(__file__), "..", "fixtures", "test.xml")
     with open(xml_path, "rb") as f:
         xml_content = f.read()
     response = requests.post(
         f"{service_url}/results",
-        files={"file": ("sample_rich.xml", xml_content, "application/xml")},
+        files={"file": ("test.xml", xml_content, "application/xml")},
         headers=auth_headers,
     )
     return response.json()

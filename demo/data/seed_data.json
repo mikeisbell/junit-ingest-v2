@@ -1,0 +1,44 @@
+{
+  "modules": [
+    {"name": "payment_processor", "path": "app/payments/processor.py"},
+    {"name": "user_auth", "path": "app/auth/user.py"},
+    {"name": "cart_service", "path": "app/cart/service.py"},
+    {"name": "order_service", "path": "app/orders/service.py"},
+    {"name": "notification_service", "path": "app/notifications/service.py"},
+    {"name": "api_gateway", "path": "app/gateway/router.py"}
+  ],
+  "features": [
+    {"name": "checkout_flow", "description": "End-to-end purchase checkout"},
+    {"name": "user_profile", "description": "User account and profile management"},
+    {"name": "shopping_cart", "description": "Cart add, remove, and update"},
+    {"name": "order_processing", "description": "Order creation and fulfillment"},
+    {"name": "payment_gateway", "description": "Payment processing and validation"}
+  ],
+  "feature_module_edges": [
+    {"feature": "checkout_flow", "module": "payment_processor"},
+    {"feature": "checkout_flow", "module": "cart_service"},
+    {"feature": "checkout_flow", "module": "order_service"},
+    {"feature": "user_profile", "module": "user_auth"},
+    {"feature": "shopping_cart", "module": "cart_service"},
+    {"feature": "order_processing", "module": "order_service"},
+    {"feature": "order_processing", "module": "api_gateway"},
+    {"feature": "payment_gateway", "module": "payment_processor"}
+  ],
+  "bugs": [
+    {"id": "BUG-001", "title": "Checkout fails when cart has more than 10 items",
+     "severity": "high", "escaped": true},
+    {"id": "BUG-002", "title": "User profile email not updated after change",
+     "severity": "medium", "escaped": true},
+    {"id": "BUG-003", "title": "Payment gateway timeout under load",
+     "severity": "high", "escaped": false},
+    {"id": "BUG-004", "title": "Order status not updated after payment",
+     "severity": "medium", "escaped": false}
+  ],
+  "bug_feature_edges": [
+    {"bug_id": "BUG-001", "feature": "checkout_flow"},
+    {"bug_id": "BUG-001", "feature": "shopping_cart"},
+    {"bug_id": "BUG-002", "feature": "user_profile"},
+    {"bug_id": "BUG-003", "feature": "payment_gateway"},
+    {"bug_id": "BUG-004", "feature": "order_processing"}
+  ]
+}

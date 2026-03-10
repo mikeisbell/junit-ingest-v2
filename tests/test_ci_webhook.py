@@ -10,7 +10,7 @@ from app.ci_webhook import process_ci_webhook
 from app.main import app
 from app.models import TestSuiteResult
 
-SAMPLE_XML = Path(__file__).parent / "sample.xml"
+SAMPLE_XML = Path(__file__).parent / "fixtures" / "test.xml"
 
 client = TestClient(app)
 
@@ -120,7 +120,7 @@ def test_webhook_endpoint_no_auth_required(monkeypatch):
 
     response = client.post(
         "/webhook/ci",
-        files={"file": ("sample.xml", xml_content, "application/xml")},
+        files={"file": ("test.xml", xml_content, "application/xml")},
     )
     # No Authorization header sent — must not return 401 or 403
     assert response.status_code not in (401, 403)
@@ -136,7 +136,7 @@ def test_webhook_endpoint_returns_correct_shape():
     with patch("app.main.process_ci_webhook", return_value={"mock": True}):
         response = client.post(
             "/webhook/ci",
-            files={"file": ("sample.xml", xml_content, "application/xml")},
+            files={"file": ("test.xml", xml_content, "application/xml")},
         )
 
     assert response.status_code == 200

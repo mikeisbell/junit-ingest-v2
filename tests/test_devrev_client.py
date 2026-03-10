@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.devrev_client import DevRevIssue, create_issue
+from app.integrations.devrev import DevRevIssue, create_issue
 
 
 # ---------------------------------------------------------------------------

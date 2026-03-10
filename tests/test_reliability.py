@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-SAMPLE_XML = Path(__file__).parent / "sample.xml"
+SAMPLE_XML = Path(__file__).parent / "fixtures" / "test.xml"
 
 client = TestClient(app)
 
@@ -28,7 +28,7 @@ def test_post_results_dispatches_embed_task(reset_store, chroma_store):
         with open(SAMPLE_XML, "rb") as f:
             response = client.post(
                 "/results",
-                files={"file": ("sample.xml", f, "text/xml")},
+                files={"file": ("test.xml", f, "text/xml")},
             )
     assert response.status_code == 200
     mock_delay.assert_called_once()

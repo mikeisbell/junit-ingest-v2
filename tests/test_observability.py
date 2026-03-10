@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-SAMPLE_XML = Path(__file__).parent / "sample.xml"
+SAMPLE_XML = Path(__file__).parent / "fixtures" / "test.xml"
 
 client = TestClient(app)
 
@@ -29,7 +29,7 @@ def _bypass_embed_task(mock_embed_task):
 
 def test_post_results_returns_trace_id_header(reset_store, chroma_store):
     with open(SAMPLE_XML, "rb") as f:
-        response = client.post("/results", files={"file": ("sample.xml", f, "text/xml")})
+        response = client.post("/results", files={"file": ("test.xml", f, "text/xml")})
     assert response.status_code == 200
     assert "x-trace-id" in response.headers
 
@@ -66,6 +66,8 @@ def test_health_ok_when_all_dependencies_reachable(reset_store):
     mock_client.heartbeat.return_value = {"nanosecond heartbeat": 1}
     mock_redis_conn = MagicMock()
     mock_redis_conn.ping.return_value = True
+    mock_neo4j = MagicMock()
+    app.state.neo4j_driver = mock_neo4j
     with patch("app.main._get_client", return_value=mock_client), \
          patch("redis.from_url", return_value=mock_redis_conn):
         response = client.get("/health")

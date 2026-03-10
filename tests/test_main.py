@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.parser import JUnitParseError, parse_junit_xml
 
-SAMPLE_XML = Path(__file__).parent / "sample.xml"
+SAMPLE_XML = Path(__file__).parent / "fixtures" / "test.xml"
 
 client = TestClient(app)
 
@@ -27,18 +27,18 @@ def _bypass_embed_task(mock_embed_task):
 
 def test_parse_sample_xml():
     result = parse_junit_xml(SAMPLE_XML.read_bytes())
-    assert result.name == "SampleTestSuite"
-    assert result.total_tests == 5
-    assert result.total_failures == 1
+    assert result.name == "FixtureTestSuite"
+    assert result.total_tests == 8
+    assert result.total_failures == 2
     assert result.total_errors == 1
     assert result.total_skipped == 1
-    assert result.elapsed_time == pytest.approx(1.234)
-    assert len(result.test_cases) == 5
+    assert result.elapsed_time == pytest.approx(3.456)
+    assert len(result.test_cases) == 8
 
 
 def test_parse_passed_test():
     result = parse_junit_xml(SAMPLE_XML.read_bytes())
-    passed = [tc for tc in result.test_cases if tc.name == "test_addition"]
+    passed = [tc for tc in result.test_cases if tc.name == "test_user_login"]
     assert len(passed) == 1
     assert passed[0].status == "passed"
     assert passed[0].failure_message is None
@@ -46,7 +46,7 @@ def test_parse_passed_test():
 
 def test_parse_failed_test():
     result = parse_junit_xml(SAMPLE_XML.read_bytes())
-    failed = [tc for tc in result.test_cases if tc.name == "test_multiplication_fails"]
+    failed = [tc for tc in result.test_cases if tc.name == "test_payment_gateway"]
     assert len(failed) == 1
     assert failed[0].status == "failed"
     assert "AssertionError" in (failed[0].failure_message or "")
@@ -54,18 +54,18 @@ def test_parse_failed_test():
 
 def test_parse_skipped_test():
     result = parse_junit_xml(SAMPLE_XML.read_bytes())
-    skipped = [tc for tc in result.test_cases if tc.name == "test_division_skipped"]
+    skipped = [tc for tc in result.test_cases if tc.name == "test_legacy_payment_flow"]
     assert len(skipped) == 1
     assert skipped[0].status == "skipped"
-    assert "disabled" in (skipped[0].failure_message or "")
+    assert "deprecated" in (skipped[0].failure_message or "")
 
 
 def test_parse_error_test():
     result = parse_junit_xml(SAMPLE_XML.read_bytes())
-    errored = [tc for tc in result.test_cases if tc.name == "test_modulo_error"]
+    errored = [tc for tc in result.test_cases if tc.name == "test_cart_concurrent_updates"]
     assert len(errored) == 1
     assert errored[0].status == "error"
-    assert "RuntimeError" in (errored[0].failure_message or "")
+    assert "ConnectionError" in (errored[0].failure_message or "")
 
 
 def test_parse_invalid_xml():
@@ -102,15 +102,15 @@ def test_parse_testsuites_wrapper():
 
 def test_post_results_success(reset_store):
     with SAMPLE_XML.open("rb") as f:
-        response = client.post("/results", files={"file": ("sample.xml", f, "application/xml")})
+        response = client.post("/results", files={"file": ("test.xml", f, "application/xml")})
     assert response.status_code == 200
     data = response.json()
-    assert data["name"] == "SampleTestSuite"
-    assert data["total_tests"] == 5
-    assert data["total_failures"] == 1
+    assert data["name"] == "FixtureTestSuite"
+    assert data["total_tests"] == 8
+    assert data["total_failures"] == 2
     assert data["total_errors"] == 1
     assert data["total_skipped"] == 1
-    assert len(data["test_cases"]) == 5
+    assert len(data["test_cases"]) == 8
 
 
 def test_post_results_invalid_xml(reset_store):
@@ -139,24 +139,24 @@ def test_get_results_returns_list(reset_store):
 
 def test_get_results_contains_posted_result(reset_store):
     with SAMPLE_XML.open("rb") as f:
-        post_response = client.post("/results", files={"file": ("sample.xml", f, "application/xml")})
+        post_response = client.post("/results", files={"file": ("test.xml", f, "application/xml")})
     assert post_response.status_code == 200
 
     response = client.get("/results")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
-    assert data[0]["name"] == "SampleTestSuite"
+    assert data[0]["name"] == "FixtureTestSuite"
 
 
 def test_get_result_by_index(reset_store):
     with SAMPLE_XML.open("rb") as f:
-        post_response = client.post("/results", files={"file": ("sample.xml", f, "application/xml")})
+        post_response = client.post("/results", files={"file": ("test.xml", f, "application/xml")})
     assert post_response.status_code == 200
 
     response = client.get("/results/1")
     assert response.status_code == 200
-    assert response.json()["name"] == "SampleTestSuite"
+    assert response.json()["name"] == "FixtureTestSuite"
 
 
 def test_get_result_by_index_not_found(reset_store):

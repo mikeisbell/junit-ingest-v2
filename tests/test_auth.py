@@ -10,7 +10,7 @@ from app import database, db_models
 from app.auth import generate_key, hash_key
 from app.main import app
 
-SAMPLE_XML = Path(__file__).parent / "sample.xml"
+SAMPLE_XML = Path(__file__).parent / "fixtures" / "test.xml"
 
 client = TestClient(app)
 
@@ -38,7 +38,7 @@ def valid_api_key(reset_store):
 
 def test_post_results_no_auth_returns_403(reset_store):
     with open(SAMPLE_XML, "rb") as f:
-        response = client.post("/results", files={"file": ("sample.xml", f, "text/xml")})
+        response = client.post("/results", files={"file": ("test.xml", f, "text/xml")})
     assert response.status_code in (401, 403)
 
 
@@ -46,7 +46,7 @@ def test_post_results_invalid_token_returns_401(reset_store, chroma_store):
     with open(SAMPLE_XML, "rb") as f:
         response = client.post(
             "/results",
-            files={"file": ("sample.xml", f, "text/xml")},
+            files={"file": ("test.xml", f, "text/xml")},
             headers={"Authorization": "Bearer invalid-token"},
         )
     assert response.status_code == 401
@@ -56,7 +56,7 @@ def test_post_results_valid_token_succeeds(valid_api_key, chroma_store, mock_emb
     with open(SAMPLE_XML, "rb") as f:
         response = client.post(
             "/results",
-            files={"file": ("sample.xml", f, "text/xml")},
+            files={"file": ("test.xml", f, "text/xml")},
             headers={"Authorization": f"Bearer {valid_api_key}"},
         )
     assert response.status_code == 200
@@ -82,6 +82,8 @@ def test_get_health_no_auth_returns_200(reset_store):
     mock_client.heartbeat.return_value = {}
     mock_redis_conn = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
     mock_redis_conn.ping.return_value = True
+    mock_neo4j = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
+    app.state.neo4j_driver = mock_neo4j
     with patch("app.main._get_client", return_value=mock_client), \
          patch("redis.from_url", return_value=mock_redis_conn):
         response = client.get("/health")
@@ -134,7 +136,7 @@ def test_key_from_post_keys_can_authenticate(reset_store, chroma_store, mock_emb
     with open(SAMPLE_XML, "rb") as f:
         ingest_resp = client.post(
             "/results",
-            files={"file": ("sample.xml", f, "text/xml")},
+            files={"file": ("test.xml", f, "text/xml")},
             headers={"Authorization": f"Bearer {plaintext}"},
         )
     assert ingest_resp.status_code == 200

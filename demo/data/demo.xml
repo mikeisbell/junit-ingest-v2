@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="CartServiceTestSuite" tests="20" failures="8" errors="3" skipped="1" time="12.847">
+
+  <!-- Cart core operations -->
+  <testcase name="test_add_to_cart" classname="tests.cart.test_cart_service" time="0.234">
+  </testcase>
+
+  <testcase name="test_add_to_cart_duplicate_item" classname="tests.cart.test_cart_service" time="0.187">
+    <failure message="AssertionError: expected quantity 2, got 1">
+AssertionError: Adding the same item twice should increment quantity.
+Expected cart item quantity: 2
+Actual cart item quantity: 1
+Cart state: [{"sku": "ITEM-001", "quantity": 1}]
+    </failure>
+  </testcase>
+
+  <testcase name="test_add_to_cart_max_quantity" classname="tests.cart.test_cart_service" time="0.156">
+    <failure message="AssertionError: expected ValidationError, got None">
+AssertionError: Adding more than 99 units of a single item should raise ValidationError.
+No error was raised. Cart accepted quantity: 150
+This may allow customers to exceed inventory limits.
+    </failure>
+  </testcase>
+
+  <testcase name="test_cart_item_quantity" classname="tests.cart.test_cart_service" time="0.203">
+    <failure message="AttributeError: 'NoneType' object has no attribute 'quantity'">
+AttributeError: 'NoneType' object has no attribute 'quantity'
+Cart item was None after add_to_cart() returned success.
+Possible race condition in cart_service.add() when session expires mid-request.
+Traceback:
+  File "tests/cart/test_cart_service.py", line 47, in test_cart_item_quantity
+    assert item.quantity == 1
+    </failure>
+  </testcase>
+
+  <testcase name="test_remove_from_cart" classname="tests.cart.test_cart_service" time="0.198">
+  </testcase>
+
+  <testcase name="test_remove_nonexistent_item" classname="tests.cart.test_cart_service" time="0.145">
+    <failure message="AssertionError: expected ItemNotFoundError, got KeyError">
+AssertionError: Removing a non-existent item should raise ItemNotFoundError.
+Got KeyError instead: 'ITEM-999'
+Error handling contract broken. Callers catching ItemNotFoundError will miss this.
+    </failure>
+  </testcase>
+
+  <testcase name="test_update_cart_quantity" classname="tests.cart.test_cart_service" time="0.167">
+  </testcase>
+
+  <testcase name="test_update_cart_quantity_zero" classname="tests.cart.test_cart_service" time="0.134">
+    <failure message="AssertionError: expected item removal, cart still contains item with quantity 0">
+AssertionError: Setting item quantity to 0 should remove the item from cart.
+Cart still contains: {"sku": "ITEM-001", "quantity": 0}
+Zero-quantity items will appear in checkout and confuse customers.
+    </failure>
+  </testcase>
+
+  <testcase name="test_clear_cart" classname="tests.cart.test_cart_service" time="0.112">
+  </testcase>
+
+  <testcase name="test_cart_persistence_across_sessions" classname="tests.cart.test_cart_service" time="0.445">
+    <failure message="AssertionError: cart empty after session restore">
+AssertionError: Cart contents should persist when user logs out and back in.
+Cart was empty after session restore.
+Session token: test-session-abc123
+This is a regression of BUG-001: checkout fails when cart state is not persisted.
+    </failure>
+  </testcase>
+
+  <!-- Cart with promo codes -->
+  <testcase name="test_apply_promo_code" classname="tests.cart.test_promo" time="0.289">
+  </testcase>
+
+  <testcase name="test_apply_invalid_promo_code" classname="tests.cart.test_promo" time="0.178">
+  </testcase>
+
+  <testcase name="test_apply_expired_promo_code" classname="tests.cart.test_promo" time="0.156">
+    <failure message="AssertionError: expected PromoExpiredError, expired promo was applied">
+AssertionError: Applying an expired promo code should raise PromoExpiredError.
+Promo SAVE20 expired 2024-01-01 was accepted and discount applied.
+Customers could exploit this to receive unauthorized discounts.
+    </failure>
+  </testcase>
+
+  <!-- Cart with database -->
+  <testcase name="test_cart_database_write" classname="tests.cart.test_persistence" time="0.334">
+  </testcase>
+
+  <testcase name="test_cart_database_read" classname="tests.cart.test_persistence" time="0.298">
+  </testcase>
+
+  <testcase name="test_cart_concurrent_updates" classname="tests.cart.test_persistence" time="1.245">
+    <error message="ConnectionError: database connection pool exhausted">
+ConnectionError: database connection pool exhausted
+Max pool size: 10
+Active connections: 10
+Waiting requests: 47
+This occurs under concurrent load. Pool size may need tuning or
+connection leak exists in cart_service.update_quantity().
+Traceback:
+  File "tests/cart/test_persistence.py", line 89, in test_cart_concurrent_updates
+    results = await asyncio.gather(*tasks)
+    </error>
+  </testcase>
+
+  <testcase name="test_cart_database_timeout" classname="tests.cart.test_persistence" time="5.012">
+    <error message="TimeoutError: database query exceeded 5000ms threshold">
+TimeoutError: database query exceeded 5000ms threshold
+Query: SELECT * FROM cart_items WHERE session_id = ? AND user_id = ?
+Execution time: 5012ms
+Missing index on (session_id, user_id) composite key likely cause.
+    </error>
+  </testcase>
+
+  <!-- Cart with checkout integration -->
+  <testcase name="test_cart_to_checkout_handoff" classname="tests.cart.test_checkout_integration" time="0.567">
+  </testcase>
+
+  <testcase name="test_cart_large_order" classname="tests.cart.test_checkout_integration" time="0.789">
+    <error message="AssertionError: checkout rejected cart with 11 items, BUG-001 regression">
+AssertionError: Checkout should accept carts with more than 10 items.
+Cart item count: 11
+HTTP response: 400 Bad Request
+Response body: {"error": "cart_item_limit_exceeded", "limit": 10}
+This is a confirmed regression of BUG-001: checkout fails when cart has more than 10 items.
+    </error>
+  </testcase>
+
+  <!-- Legacy -->
+  <testcase name="test_legacy_cart_migration" classname="tests.cart.test_legacy" time="0.123">
+    <skipped message="Legacy cart schema migration deprecated, skipping until v3 migration complete"/>
+  </testcase>
+
+</testsuite>

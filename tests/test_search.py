@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-SAMPLE_XML = Path(__file__).parent / "sample.xml"
+SAMPLE_XML = Path(__file__).parent / "fixtures" / "test.xml"
 
 client = TestClient(app)
 
@@ -25,7 +25,7 @@ def test_search_returns_results_after_ingest(reset_store, chroma_store):
 
     with patch("app.main.embed_failures_task.delay", side_effect=sync_embed):
         with open(SAMPLE_XML, "rb") as f:
-            response = client.post("/results", files={"file": ("sample.xml", f, "text/xml")})
+            response = client.post("/results", files={"file": ("test.xml", f, "text/xml")})
     assert response.status_code == 200
 
     search_response = client.get("/search", params={"q": "AssertionError"})
