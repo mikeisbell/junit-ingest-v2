@@ -8,3 +8,4 @@ __pycache__/
 test_temp.db
 .coverage
 demo/data/bugs.json
+.coverage
