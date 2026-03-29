@@ -6,3 +6,5 @@ __pycache__/
 .DS_Store
 .coverage
 test_temp.db
+.coverage
+demo/data/bugs.json

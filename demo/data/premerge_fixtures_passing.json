@@ -1,0 +1,14 @@
+{
+  "test_add_to_cart": {"status": "passed", "failure_message": null},
+  "test_add_to_cart_duplicate_item": {"status": "passed", "failure_message": null},
+  "test_cart_item_quantity": {"status": "passed", "failure_message": null},
+  "test_remove_from_cart": {"status": "passed", "failure_message": null},
+  "test_update_cart_quantity": {"status": "passed", "failure_message": null},
+  "test_update_cart_quantity_zero": {"status": "passed", "failure_message": null},
+  "test_clear_cart": {"status": "passed", "failure_message": null},
+  "test_cart_persistence_across_sessions": {"status": "passed", "failure_message": null},
+  "test_checkout_flow": {"status": "passed", "failure_message": null},
+  "test_payment_gateway": {"status": "passed", "failure_message": null},
+  "test_user_login": {"status": "passed", "failure_message": null},
+  "test_order_processing": {"status": "passed", "failure_message": null}
+}

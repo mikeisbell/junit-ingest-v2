@@ -18,6 +18,7 @@ class TestCase(BaseModel):
 
 
 class TestSuiteResult(BaseModel):
+    id: int | None = None
     name: str
     total_tests: int
     total_failures: int

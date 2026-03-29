@@ -1,0 +1,26 @@
+{
+  "test_add_to_cart": {"status": "passed", "failure_message": null},
+  "test_add_to_cart_duplicate_item": {
+    "status": "failed",
+    "failure_message": "AssertionError: expected quantity 2, got 1. Adding the same item twice should increment quantity."
+  },
+  "test_cart_item_quantity": {
+    "status": "failed",
+    "failure_message": "AttributeError: 'NoneType' object has no attribute 'quantity'. Cart item was None after add_to_cart() returned success. Possible race condition."
+  },
+  "test_remove_from_cart": {"status": "passed", "failure_message": null},
+  "test_update_cart_quantity": {"status": "passed", "failure_message": null},
+  "test_update_cart_quantity_zero": {
+    "status": "failed",
+    "failure_message": "AssertionError: expected item removal, cart still contains item with quantity 0. Zero-quantity items will appear in checkout."
+  },
+  "test_clear_cart": {"status": "passed", "failure_message": null},
+  "test_cart_persistence_across_sessions": {
+    "status": "failed",
+    "failure_message": "AssertionError: cart empty after session restore. This is a regression of BUG-001: checkout fails when cart state is not persisted."
+  },
+  "test_checkout_flow": {"status": "passed", "failure_message": null},
+  "test_payment_gateway": {"status": "passed", "failure_message": null},
+  "test_user_login": {"status": "passed", "failure_message": null},
+  "test_order_processing": {"status": "passed", "failure_message": null}
+}

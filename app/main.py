@@ -27,6 +27,7 @@ from .rate_limiter import check_rate_limit
 from .tasks import analyze_failures_task, embed_failures_task
 from .vector_store import _get_client, search_failures
 from .graph import get_gap_analysis, get_tests_for_modules, ingest_suite_to_graph
+from .premerge_webhook import router as premerge_router
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
@@ -56,11 +57,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="JUnit XML Ingestion Service", lifespan=lifespan)
-app.add_middleware(TraceIDMiddleware)
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(TraceIDMiddleware)
+app.include_router(premerge_router)
 
 def _orm_to_pydantic(row: db_models.TestSuiteResultORM) -> TestSuiteResult:
     return TestSuiteResult(
+        id=row.id,
         name=row.name,
         total_tests=row.total_tests,
         total_failures=row.total_failures,
