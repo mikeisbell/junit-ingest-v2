@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="CartServiceTestSuite" tests="20" failures="8" errors="3" skipped="1" time="12.847">
+<testsuite name="CartServiceTestSuite" tests="23" failures="7" errors="3" skipped="1" time="12.847">
 
   <!-- Cart core operations -->
   <testcase name="test_add_to_cart" classname="tests.cart.test_cart_service" time="0.234">
@@ -59,12 +59,6 @@ Zero-quantity items will appear in checkout and confuse customers.
   </testcase>
 
   <testcase name="test_cart_persistence_across_sessions" classname="tests.cart.test_cart_service" time="0.445">
-    <failure message="AssertionError: cart empty after session restore">
-AssertionError: Cart contents should persist when user logs out and back in.
-Cart was empty after session restore.
-Session token: test-session-abc123
-This is a regression of BUG-001: checkout fails when cart state is not persisted.
-    </failure>
   </testcase>
 
   <!-- Cart with promo codes -->
@@ -129,6 +123,15 @@ This is a confirmed regression of BUG-001: checkout fails when cart has more tha
   <!-- Legacy -->
   <testcase name="test_legacy_cart_migration" classname="tests.cart.test_legacy" time="0.123">
     <skipped message="Legacy cart schema migration deprecated, skipping until v3 migration complete"/>
+  </testcase>
+
+  <testcase name="test_payment_gateway" classname="tests.payment.test_gateway" time="0.312">
+  </testcase>
+
+  <testcase name="test_legacy_payment_flow" classname="tests.payment.test_gateway" time="0.287">
+  </testcase>
+
+  <testcase name="test_order_processing" classname="tests.orders.test_processing" time="0.445">
   </testcase>
 
 </testsuite>

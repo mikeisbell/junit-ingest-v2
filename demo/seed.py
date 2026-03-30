@@ -37,8 +37,12 @@ def main():
     driver.close()
     print("Demo graph seeded successfully.")
 
-    from bug_tracker import reset_store
+    from bug_tracker import reset_store, link_failure_to_bug
     reset_store()
+    link_failure_to_bug('BUG-001', 'build-prev', 'test_cart_persistence_across_sessions')
+    link_failure_to_bug('BUG-003', 'build-prev', 'test_payment_gateway')
+    link_failure_to_bug('BUG-003', 'build-prev', 'test_legacy_payment_flow')
+    link_failure_to_bug('BUG-004', 'build-prev', 'test_order_processing')
     print("Bug tracker seeded successfully.")
 
 
