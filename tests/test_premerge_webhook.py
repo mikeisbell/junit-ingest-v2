@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 
 import bug_tracker as bt
 from app.auth import require_api_key
+
+pytestmark = pytest.mark.integration
 from app.db_models import APIKeyORM
 from app.main import app
 
