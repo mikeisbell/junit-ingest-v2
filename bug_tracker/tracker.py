@@ -40,6 +40,7 @@ def _next_id(session) -> str:
 
 def get_all_bugs() -> list[dict]:
     """Return all bugs as a list of dicts."""
+    _ensure_init()
     with SessionLocal() as session:
         bugs = session.query(BugORM).all()
         return [_bug_to_dict(b) for b in bugs]
@@ -47,6 +48,7 @@ def get_all_bugs() -> list[dict]:
 
 def get_bug(bug_id: str) -> dict | None:
     """Return a single bug by ID or None if not found."""
+    _ensure_init()
     with SessionLocal() as session:
         bug = session.query(BugORM).filter(BugORM.id == bug_id).first()
         return _bug_to_dict(bug) if bug is not None else None
@@ -56,6 +58,7 @@ def find_bug_by_signature(failure_message: str) -> dict | None:
     """Find a bug whose failure_signatures contains a substring present in
     failure_message (case-insensitive). Also matches if the bug's ID appears
     as a substring in failure_message (e.g. 'BUG-001' in message)."""
+    _ensure_init()
     lower_msg = failure_message.lower()
     with SessionLocal() as session:
         bugs = session.query(BugORM).all()
@@ -78,6 +81,7 @@ def create_bug(
 ) -> dict:
     """Create a new bug with auto-assigned ID.
     Status: open. Escaped: False."""
+    _ensure_init()
     with SessionLocal() as session:
         new_id = _next_id(session)
         new_bug = BugORM(
@@ -103,6 +107,7 @@ def create_bug(
 def link_failure_to_bug(bug_id: str, build: str, test_name: str) -> dict | None:
     """Add build and test_name to existing bug if not already present.
     Never modifies status."""
+    _ensure_init()
     with SessionLocal() as session:
         bug = session.query(BugORM).filter(BugORM.id == bug_id).first()
         if bug is None:
@@ -128,6 +133,7 @@ def link_failure_to_bug(bug_id: str, build: str, test_name: str) -> dict | None:
 
 def set_bug_status(bug_id: str, status: str) -> dict | None:
     """Set bug status to open, resolved, or verified."""
+    _ensure_init()
     with SessionLocal() as session:
         bug = session.query(BugORM).filter(BugORM.id == bug_id).first()
         if bug is None:
@@ -142,6 +148,7 @@ def set_bug_status(bug_id: str, status: str) -> dict | None:
 
 def get_bugs_for_feature(feature: str) -> list[dict]:
     """Return all bugs for a given feature."""
+    _ensure_init()
     with SessionLocal() as session:
         bugs = session.query(BugORM).filter(BugORM.feature == feature).all()
         return [_bug_to_dict(b) for b in bugs]
@@ -178,6 +185,7 @@ def _seed_from_data(seed_data: dict) -> None:
 
 def reset_store() -> None:
     """Delete all bugs and re-seed from demo/data/seed_data.json."""
+    _ensure_init()
     seed_path = Path(__file__).parent.parent / "demo" / "data" / "seed_data.json"
     with SessionLocal() as session:
         session.query(BugORM).delete()
@@ -205,6 +213,12 @@ def load_bugs() -> None:
     _seed_from_data(seed_data)
 
 
-# Initialise table and seed on import
-init_db()
-load_bugs()
+_initialized = False
+
+
+def _ensure_init() -> None:
+    global _initialized
+    if not _initialized:
+        init_db()
+        load_bugs()
+        _initialized = True
