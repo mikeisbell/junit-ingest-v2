@@ -31,7 +31,7 @@ jobs:
       - name: Run unit tests
         env:
           DATABASE_URL: sqlite:///./test_temp.db
-        run: pytest tests/ -v --tb=short --ignore=tests/integration
+        run: pytest tests/ -v --tb=short --ignore=tests/integration -m 'not integration'
 
       - name: Build Docker images
         run: docker compose build
