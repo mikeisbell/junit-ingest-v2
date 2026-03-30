@@ -192,6 +192,7 @@ def reset_store() -> None:
     global _bug_store
     _bug_store = {}
     _seed_from_file()
+    _save()
 
 
 # Load on import

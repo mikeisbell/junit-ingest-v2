@@ -38,9 +38,9 @@ P0_REGRESSION_TESTS = [
     "test_order_processing",
 ]
 
-_FIXTURES_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "demo", "data", "premerge_fixtures.json"
-)
+_FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "demo", "data")
+_FIXTURES_PATH = os.path.join(_FIXTURES_DIR, "premerge_fixtures.json")
+_FIXTURES_PASSING_PATH = os.path.join(_FIXTURES_DIR, "premerge_fixtures_passing.json")
 
 
 class PremergeRequest(BaseModel):
@@ -48,6 +48,7 @@ class PremergeRequest(BaseModel):
     author: str
     changed_modules: list[str]
     description: str = ""
+    outcome: str = "fail"
 
 
 class AnalyzeResponse(BaseModel):
@@ -73,16 +74,16 @@ class PremergeResponse(BaseModel):
     total_passed: int
     total_failed: int
     failure_rate: float
-    analysis: dict | None
+    failures: list[dict]
     merge_recommendation: str
 
 
-def _load_fixtures() -> dict:
-    """Load premerge_fixtures.json. Returns empty dict and logs warning if missing."""
-    if not os.path.exists(_FIXTURES_PATH):
-        logger.warning("premerge_fixtures_missing", extra={"path": _FIXTURES_PATH})
+def _load_fixtures(path: str = _FIXTURES_PATH) -> dict:
+    """Load a fixtures JSON file. Returns empty dict and logs warning if missing."""
+    if not os.path.exists(path):
+        logger.warning("premerge_fixtures_missing", extra={"path": path})
         return {}
-    with open(_FIXTURES_PATH, encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         return json.load(fh)
 
 
@@ -112,8 +113,10 @@ def _verify_resolved_bugs(test_name: str, build: str) -> list[str]:
 def analyze_failures(failed_results: list[dict], build: str) -> dict:
     """Analyze failed test results, linking or creating bugs for each failure.
 
+    Called exclusively from POST /webhook/analyze for official builds.
+
     Args:
-        failed_results: List of failed result dicts from simulated test execution.
+        failed_results: List of failed result dicts from test execution.
         build:          Build string to associate with discovered bugs.
 
     Returns:
@@ -190,7 +193,8 @@ async def premerge_webhook(
     total_selected = len(selected_tests)
 
     # Step 2: Simulate test execution
-    fixtures = _load_fixtures()
+    fixture_path = _FIXTURES_PASSING_PATH if request.outcome == "pass" else _FIXTURES_PATH
+    fixtures = _load_fixtures(fixture_path)
     results: list[dict] = []
     for test in selected_tests:
         test_name = test["test_name"]
@@ -210,10 +214,11 @@ async def premerge_webhook(
     total_passed = len(results) - total_failed
     failure_rate = total_failed / len(results) if results else 0.0
 
-    # Step 3: Run failure analysis if needed
-    analysis: dict | None = None
-    if failed_results:
-        analysis = analyze_failures(failed_results, build)
+    # Step 3: Build failure summary
+    failures = [
+        {"test_name": r["test_name"], "failure_message": r["failure_message"]}
+        for r in failed_results
+    ]
 
     merge_recommendation = "blocked" if failed_results else "approved"
 
@@ -239,7 +244,7 @@ async def premerge_webhook(
         total_passed=total_passed,
         total_failed=total_failed,
         failure_rate=failure_rate,
-        analysis=analysis,
+        failures=failures,
         merge_recommendation=merge_recommendation,
     )
 

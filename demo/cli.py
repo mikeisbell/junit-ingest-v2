@@ -10,6 +10,10 @@ Usage (from project root):
     python demo/cli.py bug list
     python demo/cli.py reset --confirm
 """
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 import argparse
 import json
 import os
@@ -276,7 +280,7 @@ def cmd_status():
 
     all_ok = True
     for dep in ("postgres", "chromadb", "redis", "neo4j"):
-        status = resp.get(dep, "unknown")
+        status = resp.get("dependencies", {}).get(dep, {}).get("status", "unknown")
         if status == "ok":
             ok(f"{dep}: {status}")
         else:
@@ -320,6 +324,7 @@ def cmd_mr_submit(args, session, api_key):
             "author": args.author,
             "changed_modules": args.modules,
             "description": args.description,
+            "outcome": args.outcome,
         },
     )
 
@@ -337,13 +342,14 @@ def cmd_mr_submit(args, session, api_key):
             if msg:
                 detail("  failure", msg[:120])
 
-    section("Failure Analysis")
-    if response.get("analysis"):
-        detail("Bugs linked to existing", response["analysis"]["bugs_linked"])
-        detail("New bugs created", response["analysis"]["bugs_created"])
-        detail("Bug IDs", ", ".join(response["analysis"]["bug_ids"]))
+    section("Failed Tests")
+    failures = response.get("failures") or []
+    if failures:
+        for item in failures:
+            err(item["test_name"])
+            detail("  reason", (item.get("failure_message") or "")[:120])
     else:
-        ok("No failures detected")
+        ok("No failures — all tests passed")
 
     section("Merge Decision")
     if response.get("merge_recommendation") == "approved":

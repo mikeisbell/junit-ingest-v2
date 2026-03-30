@@ -51,7 +51,7 @@ def get_tests_for_modules(driver, module_names: list) -> list:
         tests = []
         seen: set = set()
         for record in result:
-            key = (record["test_name"], record["module_name"])
+            key = record["test_name"]
             if key in seen:
                 continue
             seen.add(key)
