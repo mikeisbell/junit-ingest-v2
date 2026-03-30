@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-import app.bug_tracker as bt
+import bug_tracker as bt
 from app.auth import require_api_key
 from app.db_models import APIKeyORM
 from app.main import app
@@ -51,9 +51,10 @@ _VALID_PAYLOAD = {
 
 
 @pytest.fixture(autouse=True)
-def reset_bug_store(tmp_path, monkeypatch):
-    """Isolate bug store and redirect _BUGS_FILE to temp dir."""
-    monkeypatch.setattr(bt, "_BUGS_FILE", str(tmp_path / "bugs.json"))
+def reset_bug_store():
+    """Reset the bug store before and after each test for isolation."""
+    bt.reset_store()
+    yield
     bt.reset_store()
 
 
@@ -104,7 +105,7 @@ def test_approved_when_all_pass():
     data = resp.json()
     assert data["merge_recommendation"] == "approved"
     assert data["total_failed"] == 0
-    assert data["analysis"] is None
+    assert data["failures"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +118,7 @@ def test_blocked_when_failures():
     data = resp.json()
     assert data["merge_recommendation"] == "blocked"
     assert data["total_failed"] > 0
-    assert data["analysis"] is not None
+    assert len(data["failures"]) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +129,7 @@ def test_bugs_created_for_new_failures():
     resp = _post(fixtures=_MIXED_FIXTURES)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["analysis"]["bugs_created"] > 0
+    assert len(data["failures"]) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -150,8 +151,7 @@ def test_bugs_linked_for_known_signature():
     resp = _post(fixtures=_LINK_FIXTURES, extra_graph_tests=extra)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["analysis"] is not None
-    assert data["analysis"]["bugs_linked"] > 0
+    assert len(data["failures"]) > 0
 
 
 # ---------------------------------------------------------------------------

@@ -1,15 +1,16 @@
-"""Tests for app.bug_tracker module."""
+"""Tests for the bug_tracker module."""
 import pytest
 
-import app.bug_tracker as bt
+pytestmark = pytest.mark.integration
+
+import bug_tracker as bt
 
 
 @pytest.fixture(autouse=True)
-def clean_store(tmp_path, monkeypatch):
-    """Reset the bug store before each test for isolation.
-    Redirects _BUGS_FILE to a temp path so tests never read/write the real
-    demo/data/bugs.json and remain independent of prior test runs."""
-    monkeypatch.setattr(bt, "_BUGS_FILE", str(tmp_path / "bugs.json"))
+def clean_bugs():
+    """Reset the bug store before and after each test for isolation."""
+    bt.reset_store()
+    yield
     bt.reset_store()
 
 
@@ -106,10 +107,9 @@ def test_create_bug_returns_correct_fields():
     assert int(bug["id"][4:]) >= 5
 
 
-# 8. create_bug persists to disk
-def test_create_bug_persists_to_disk():
-    """Create a bug, reload from disk, and verify it survives.
-    _BUGS_FILE is already redirected to a temp path by the autouse fixture."""
+# 8. create_bug persists to postgres
+def test_create_bug_persists_to_postgres():
+    """Create a bug and verify it is retrievable from the database."""
     created = bt.create_bug(
         title="Persisted bug",
         severity="low",
@@ -119,10 +119,6 @@ def test_create_bug_persists_to_disk():
         test_name="test_timeout",
     )
     bug_id = created["id"]
-
-    # Simulate a fresh load from the written file
-    bt._bug_store.clear()
-    bt.load_bugs()  # loads from the temp bugs.json written by create_bug
 
     assert bt.get_bug(bug_id) is not None
     assert bt.get_bug(bug_id)["title"] == "Persisted bug"
@@ -163,7 +159,7 @@ def test_set_bug_status_updates():
     updated = bt.set_bug_status("BUG-003", "verified")
     assert updated["status"] == "verified"
 
-    # Confirm in-memory store is updated
+    # Confirm database is updated
     assert bt.get_bug("BUG-003")["status"] == "verified"
 
 

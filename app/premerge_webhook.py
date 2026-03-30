@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from .auth import require_api_key
-from .bug_tracker import (
+from bug_tracker import (
     create_bug,
     find_bug_by_signature,
     get_all_bugs,

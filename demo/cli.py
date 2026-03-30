@@ -501,7 +501,7 @@ def cmd_build_show(args, session):
 
 
 def cmd_bug_list():
-    from app.bug_tracker import get_all_bugs
+    from bug_tracker import get_all_bugs
 
     hdr("Bug Tracker")
     bugs = get_all_bugs()
@@ -533,7 +533,7 @@ def cmd_bug_list():
 
 
 def cmd_bug_show(args):
-    from app.bug_tracker import get_bug
+    from bug_tracker import get_bug
 
     hdr(f"Bug: {args.bug_id}")
     bug = get_bug(args.bug_id)
@@ -549,7 +549,7 @@ def cmd_bug_show(args):
 
 
 def cmd_bug_create(args):
-    from app.bug_tracker import create_bug
+    from bug_tracker import create_bug
 
     hdr("Create Bug")
     bug = create_bug(
@@ -566,7 +566,7 @@ def cmd_bug_create(args):
 
 
 def cmd_bug_update_status(args):
-    from app.bug_tracker import set_bug_status
+    from bug_tracker import set_bug_status
 
     valid = {"open", "resolved", "verified"}
     if args.status not in valid:
@@ -581,7 +581,7 @@ def cmd_bug_update_status(args):
 
 
 def cmd_bug_link(args):
-    from app.bug_tracker import link_failure_to_bug
+    from bug_tracker import link_failure_to_bug
 
     hdr(f"Link failure to {args.bug_id}")
     result = link_failure_to_bug(args.bug_id, args.build, args.test_name)
@@ -694,7 +694,7 @@ def cmd_reset(args, session):
         err("Add --confirm to reset demo data.")
         sys.exit(1)
 
-    from app.bug_tracker import reset_store
+    from bug_tracker import reset_store
 
     reset_store()
     session.update({"api_key": session.get("api_key"), "mrs": {}, "builds": {}})

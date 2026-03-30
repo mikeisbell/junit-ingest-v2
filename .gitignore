@@ -9,3 +9,5 @@ test_temp.db
 .coverage
 demo/data/bugs.json
 .coverage
+demo/data/session.json
+test_temp.db

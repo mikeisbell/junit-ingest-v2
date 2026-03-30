@@ -37,6 +37,10 @@ def main():
     driver.close()
     print("Demo graph seeded successfully.")
 
+    from bug_tracker import reset_store
+    reset_store()
+    print("Bug tracker seeded successfully.")
+
 
 if __name__ == "__main__":
     main()
