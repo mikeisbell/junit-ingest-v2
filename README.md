@@ -6,8 +6,7 @@ demonstration of AI-assisted engineering using Claude Sonnet via GitHub Copilot
 agents in VS Code.
 
 Each layer of this service was built by writing a natural language
-`INSTRUCTIONS_*.md` file and handing it to a Copilot agent for implementation,
-mirroring the AI-assisted test generation workflow used at Lucid Motors.
+`INSTRUCTIONS_*.md` file and handing it to a Copilot agent for implementation.
 
 ---
 
