@@ -1,14 +1,22 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
 *.pyo
+
+# Environment
 .env
+
+# macOS
 .DS_Store
+
+# Testing
 .coverage
 test_temp.db
-.coverage
+
+# Demo runtime state
 demo/data/bugs.json
-.coverage
 demo/data/session.json
-test_temp.db
-.DS_Store
+
+# Docker
+*.log
